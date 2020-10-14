@@ -13,8 +13,8 @@ parser.add_argument('--num_symbols', type=int, default=3)
 parser.add_argument('--dqn_hidden_dim', type=int, default=5)
 parser.add_argument('--lr', type=float, default=.001)
 parser.add_argument('--momentum', type=float, default=.9)
-parser.add_argument('--gamma', type=float, default=.8)
-parser.add_argument('--batch_size', type=int, default=32)
+parser.add_argument('--gamma', type=float, default=.2)
+parser.add_argument('--batch_size', type=int, default=4)
 parser.add_argument('--iter_before_training', type=int, default=50)
 parser.add_argument('--eps', type=float, default=.1)
 parser.add_argument('--memory_buffer_size', type=int, default=100)
@@ -54,6 +54,8 @@ class PFC:
             self.stripes[0] = data
         if gates[0, 1].item():
             self.stripes[1] = self.stripes[0].detach()
+        else:
+            self.stripes[1] = torch.zeros(1, self.stripe_size)
 
     def output(self):
         for val in self.stripes[-1].squeeze(0):
