@@ -10,21 +10,26 @@ from store_ignore_recall import GetData
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--num_symbols', type=int, default=3)
-parser.add_argument('--dqn_hidden_dim', type=int, default=5)
+parser.add_argument('--dqn_hidden_dim', type=int, default=3)
 parser.add_argument('--lr', type=float, default=.001)
-parser.add_argument('--momentum', type=float, default=.9)
-parser.add_argument('--gamma', type=float, default=.2)
-parser.add_argument('--batch_size', type=int, default=4)
+parser.add_argument('--momentum', type=float, default=.7)
+parser.add_argument('--gamma', type=float, default=.5)
+parser.add_argument('--batch_size', type=int, default=16)
 parser.add_argument('--iter_before_training', type=int, default=50)
 parser.add_argument('--eps', type=float, default=.1)
 parser.add_argument('--memory_buffer_size', type=int, default=100)
-parser.add_argument('--log_every_n', type=int, default=100)
-parser.add_argument('--num_train', type=int, default=2000)
-parser.add_argument('--num_demo', type=int, default=100)
+parser.add_argument('--replace_target_every_n', type=int, default=1000)
+parser.add_argument('--log_every_n', type=int, default=300)
+parser.add_argument('--num_train', type=int, default=30000)
+parser.add_argument('--num_demo', type=int, default=50)
 
 args = vars(parser.parse_args())
 
 INSTRUCTION_LIST = {0: 'Ignore', 1: 'Store', 2: 'Recall'}
+
+
+def copy_nets(net1, net2):
+    net1.load_state_dict(net2.state_dict())
 
 
 def get_actions(length):
@@ -65,11 +70,12 @@ class PFC:
 
 
 class DQNSolver:
-    def __init__(self, data_src, q_net, pfc, optimizer, num_symbols,
-                 gamma=.3, batch_size=8, iter_before_train=50,
-                 eps=.1, memory_buffer_size=100, log_every_n=100):
+    def __init__(self, data_src, q_net, target_q_net, pfc, optimizer, num_symbols,
+                 gamma=.3, batch_size=8, iter_before_train=50, eps=.1,
+                 memory_buffer_size=100, replace_target_every_n=100, log_every_n=100):
         self.data_src = data_src
         self.q_net = q_net
+        self.target_q_net = target_q_net
         self.pfc = pfc
         self.optimizer = optimizer
         self.num_symbols = num_symbols
@@ -78,13 +84,17 @@ class DQNSolver:
         self.iter_before_train = iter_before_train
         self.eps = eps
         self.memory_buffer_size = memory_buffer_size
+        self.replace_target_every_n = replace_target_every_n
         self.log_every_n = log_every_n
         self.memory_buffer = []
         self.losses = []
 
-    def get_q_value(self, state, action):
+    def get_q_value(self, state, action, use_target=True):
         q_net_input = torch.cat([state] + self.pfc.stripes + [action], 1)
-        return self.q_net(q_net_input)
+        if use_target:
+            return self.target_q_net(q_net_input)
+        else:
+            return self.q_net(q_net_input)
 
     @torch.no_grad()
     def select_action(self, state):
@@ -107,10 +117,10 @@ class DQNSolver:
         optimizer.zero_grad()
 
         for state, action, reward, new_state in samples:
-            current_q = self.get_q_value(state, action.type(torch.FloatTensor))
+            current_q = self.get_q_value(state, action.type(torch.FloatTensor), use_target=False)
             future_q_value = torch.tensor(0)
             for next_action in ACTIONS:
-                candidate_q_value = self.get_q_value(state, next_action).detach()
+                candidate_q_value = self.get_q_value(state, next_action, use_target=False).detach()
                 future_q_value = max(future_q_value, candidate_q_value)
             loss += (current_q - (reward + self.gamma * future_q_value)) ** 2
 
@@ -120,7 +130,7 @@ class DQNSolver:
 
     def train(self, num_iterations):
         triple = None
-        for _ in range(num_iterations):
+        for iteration in range(num_iterations):
             # Main iteration.
             state, answer = self.data_src.get_data()
             action = self.select_action(state)
@@ -143,6 +153,9 @@ class DQNSolver:
             if len(self.losses) == self.log_every_n:
                 print(sum(self.losses) / len(self.losses))
                 self.losses = []
+
+            if (iteration + 1) % self.replace_target_every_n == 0:
+                self.target_q_net.load_state_dict(self.q_net.state_dict())
 
     def eval(self, num_iterations):
         for _ in range(num_iterations):
@@ -169,11 +182,19 @@ dqn = nn.Sequential(
     nn.Linear(dqn_hidden_dim, 1),
     nn.ReLU()
 )
+target_dqn = nn.Sequential(
+    nn.Linear(num_symbols * 3 + 5, dqn_hidden_dim),
+    nn.ReLU(),
+    nn.Linear(dqn_hidden_dim, 1),
+    nn.ReLU()
+)
+target_dqn.load_state_dict(dqn.state_dict())
 pfc = PFC(num_symbols)
 optimizer = optim.SGD(dqn.parameters(), lr=args['lr'], momentum=args['momentum'])
 
 solver = DQNSolver(data_src,
                    dqn,
+                   target_dqn,
                    pfc,
                    optimizer,
                    num_symbols,
