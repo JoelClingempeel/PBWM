@@ -18,17 +18,21 @@ class GetData:
         self.stored_symbol = 0
 
     def get_data(self):
-        symbol = random.randint(1, self.num_symbols)
-        answer = 0
-        task = random.randint(0, 2 if self.stored_symbol else 1)
-        if task == 1:  # Store
-            self.stored_symbol = symbol
-        elif task == 2:  # Recall
+        if self.stored_symbol == 0:  # Store or Ignore
+            answer = 0
+            symbol = random.randint(1, self.num_symbols)
+            task = random.randint(0, 1)
+            if task == 1:  # Store
+                self.stored_symbol = symbol
+        else:  # Recall
             answer = self.stored_symbol
+            symbol = answer
+            self.stored_symbol = 0
+            task = 2
 
         symbol_vec = one_hot(symbol - 1, self.num_symbols)
         task_vec = one_hot(task, 3)
-        return torch.cat([symbol_vec, task_vec], 1), answer
+        return torch.cat([symbol_vec, task_vec], 1), torch.tensor(answer)
 
     def show_demo(self, state, out, label):
         symbol = torch.argmax(state[:, :self.num_symbols], 1).item() + 1
