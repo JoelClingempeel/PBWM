@@ -8,21 +8,19 @@ from torch import optim
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--dqn_hidden_dim', type=int, default=3)
-parser.add_argument('--lr', type=float, default=.0001)
+parser.add_argument('--lr', type=float, default=.001)
 parser.add_argument('--momentum', type=float, default=.7)
 parser.add_argument('--gamma', type=float, default=.8)
 parser.add_argument('--batch_size', type=int, default=16)
 parser.add_argument('--iter_before_training', type=int, default=200)
-parser.add_argument('--eps', type=float, default=.3)
+parser.add_argument('--eps', type=float, default=.1)
 parser.add_argument('--memory_buffer_size', type=int, default=500)
 parser.add_argument('--replace_target_every_n', type=int, default=30)
 parser.add_argument('--log_every_n', type=int, default=50)
-parser.add_argument('--num_train', type=int, default=10000)
-parser.add_argument('--num_demo', type=int, default=300)
+parser.add_argument('--num_train', type=int, default=3000)
+parser.add_argument('--num_demo', type=int, default=1000)
 
 args = vars(parser.parse_args())
-
-INSTRUCTION_LIST = {0: 'Ignore', 1: 'Store', 2: 'Recall'}
 
 
 def copy_nets(net1, net2):
