@@ -5,11 +5,8 @@ import torch
 import torch.nn as nn
 from torch import optim
 
-from baby_store_ignore_recall import GetData
-
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--num_symbols', type=int, default=2)
 parser.add_argument('--dqn_hidden_dim', type=int, default=3)
 parser.add_argument('--lr', type=float, default=.0001)
 parser.add_argument('--momentum', type=float, default=.7)
@@ -19,9 +16,9 @@ parser.add_argument('--iter_before_training', type=int, default=200)
 parser.add_argument('--eps', type=float, default=.3)
 parser.add_argument('--memory_buffer_size', type=int, default=500)
 parser.add_argument('--replace_target_every_n', type=int, default=30)
-parser.add_argument('--log_every_n', type=int, default=100)
-parser.add_argument('--num_train', type=int, default=3000)
-parser.add_argument('--num_demo', type=int, default=50)
+parser.add_argument('--log_every_n', type=int, default=50)
+parser.add_argument('--num_train', type=int, default=10000)
+parser.add_argument('--num_demo', type=int, default=300)
 
 args = vars(parser.parse_args())
 
@@ -32,53 +29,21 @@ def copy_nets(net1, net2):
     net1.load_state_dict(net2.state_dict())
 
 
-def get_actions(length):
-    out = []
-    for index in range(2 ** length):
-        vec = []
-        for _ in range(length):
-            vec.append(index % 2)
-            index >>= 1
-        out.append(vec)
-    return out
+def get_state():
+    return torch.tensor([[random.randint(0, 1)]]).float()
 
 
-ACTIONS = [torch.tensor([action]).float()
-           for action in get_actions(2)]
-
-
-class PFC:
-    def __init__(self, stripe_size):
-        self.stripe_size = stripe_size
-
-        self.stripes = [torch.zeros(1, stripe_size)
-                        for _ in range(2)]
-
-    def update(self, data, gates):
-        if gates[0, 0].item():
-            self.stripes[0] = data
-        if gates[0, 1].item():
-            self.stripes[1] = self.stripes[0].detach()
-        else:
-            self.stripes[1] = torch.zeros(1, self.stripe_size)
-
-    def output(self):
-        for val in self.stripes[1].squeeze(0):
-            if val.item():
-                return torch.argmax(self.stripes[-1])
-        return torch.tensor(0)
+ACTIONS = [torch.tensor([[1., 0.]]),
+           torch.tensor([[0., 1.]])]
 
 
 class DQNSolver:
-    def __init__(self, data_src, q_net, target_q_net, pfc, optimizer, num_symbols,
+    def __init__(self, q_net, target_q_net, optimizer,
                  gamma=.3, batch_size=8, iter_before_train=50, eps=.1,
                  memory_buffer_size=100, replace_target_every_n=100, log_every_n=100):
-        self.data_src = data_src
         self.q_net = q_net
         self.target_q_net = target_q_net
-        self.pfc = pfc
         self.optimizer = optimizer
-        self.num_symbols = num_symbols
         self.gamma = gamma
         self.batch_size = batch_size
         self.iter_before_train = iter_before_train
@@ -90,7 +55,7 @@ class DQNSolver:
         self.losses = []
 
     def get_q_value(self, state, action, use_target=True):
-        q_net_input = torch.cat([state] + self.pfc.stripes + [action], 1)
+        q_net_input = torch.cat([state] + [action], 1)
         if use_target:
             return self.target_q_net(q_net_input)
         else:
@@ -100,8 +65,7 @@ class DQNSolver:
     def select_action(self, state):
         if (len(self.memory_buffer) < self.iter_before_train or
                 random.uniform(0, 1) < self.eps):
-            return torch.tensor([[random.choice([0, 1])
-                                  for _ in range(2)]])
+            return random.choice(ACTIONS)
         else:
             best_action_score = -1
             for action in ACTIONS:
@@ -132,10 +96,9 @@ class DQNSolver:
         triple = None
         for iteration in range(num_iterations):
             # Main iteration.
-            state, answer = self.data_src.get_data()
+            state = get_state()
             action = self.select_action(state)
-            self.pfc.update(state[:, :-3], action)
-            if self.pfc.output() == answer:
+            if state[0, 0].item() == torch.argmax(action, dim=1):
                 reward = 1
             else:
                 reward = 0
@@ -158,47 +121,35 @@ class DQNSolver:
                 self.target_q_net.load_state_dict(self.q_net.state_dict())
 
     def eval(self, num_iterations):
+        success_count = 0
         for _ in range(num_iterations):
-            state, answer = self.data_src.get_data()
-            symbol = torch.argmax(state[:, :self.num_symbols], 1).item() + 1
-            print(f"Symbol:  {symbol}")
-            instruction = INSTRUCTION_LIST[torch.argmax(state[:, self.num_symbols:], 1).item()]
-            print(f"Action:  {instruction}")
-
-            gating = self.select_action(state)
-            print('GATING: ', gating)
-            self.pfc.update(state[:, :-3], gating)
-            print('GET: ', self.pfc.output().item())
-            print('EXPECT: ', answer.item())
-            print('\n\n')
+            state = get_state()
+            action = self.select_action(state)
+            if state[0, 0].item() == torch.argmax(action, 1).item():
+                success_count += 1
+        return success_count / num_iterations
 
 
-num_symbols = args['num_symbols']
 dqn_hidden_dim = args['dqn_hidden_dim']
 
-data_src = GetData(num_symbols)
 dqn = nn.Sequential(
-    nn.Linear(num_symbols * 3 + 5, dqn_hidden_dim),
+    nn.Linear(3, dqn_hidden_dim),
     nn.ReLU(),
     nn.Linear(dqn_hidden_dim, 1),
     nn.ReLU()
 )
 target_dqn = nn.Sequential(
-    nn.Linear(num_symbols * 3 + 5, dqn_hidden_dim),
+    nn.Linear(3, dqn_hidden_dim),
     nn.ReLU(),
     nn.Linear(dqn_hidden_dim, 1),
     nn.ReLU()
 )
 target_dqn.load_state_dict(dqn.state_dict())
-pfc = PFC(num_symbols)
 optimizer = optim.SGD(dqn.parameters(), lr=args['lr'], momentum=args['momentum'])
 
-solver = DQNSolver(data_src,
-                   dqn,
+solver = DQNSolver(dqn,
                    target_dqn,
-                   pfc,
                    optimizer,
-                   num_symbols,
                    gamma=args['gamma'],
                    batch_size=args['batch_size'],
                    iter_before_train=args['iter_before_training'],
@@ -206,14 +157,6 @@ solver = DQNSolver(data_src,
                    memory_buffer_size=args['memory_buffer_size'],
                    log_every_n=args['log_every_n'])
 
-solver.eps = .7
-solver.train(1000)
-solver.eps = .5
-solver.train(1000)
-solver.eps = .3
-solver.train(1000)
-solver.eps = .1
-solver.train(1000)
-solver.eps = 0
-solver.train(1000)
-solver.eval(args['num_demo'])
+solver.train(args['num_train'])
+success_rate = solver.eval(args['num_demo'])
+print(f"\n\nSuccess Rate:  {success_rate}")
