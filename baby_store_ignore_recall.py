@@ -1,7 +1,6 @@
 import random
 
 import torch
-import torch.nn as nn
 
 ACTIONS = {0: 'Ignore', 1: 'Store', 2: 'Recall'}
 

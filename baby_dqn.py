@@ -22,7 +22,7 @@ parser.add_argument('--replace_target_every_n', type=int, default=30)
 parser.add_argument('--log_every_n', type=int, default=100)
 parser.add_argument('--num_train', type=int, default=3000)
 parser.add_argument('--num_demo', type=int, default=50)
-parser.add_argument('--interactive_mode', type=bool, default=True)
+parser.add_argument('--interactive_mode', type=str, default='False')
 
 args = vars(parser.parse_args())
 
@@ -208,7 +208,7 @@ solver = DQNSolver(data_src,
                    eps=args['eps'],
                    memory_buffer_size=args['memory_buffer_size'],
                    log_every_n=args['log_every_n'],
-                   interactive_mode=args['interactive_mode'])
+                   interactive_mode=(args['interactive_mode'] == 'True'))
 
 solver.train(args['num_train'])
 solver.eps = 0
