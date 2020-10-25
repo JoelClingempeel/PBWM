@@ -8,7 +8,8 @@ ACTIONS = {0: 'Ignore', 1: 'Store', 2: 'Recall'}
 
 def one_hot(index, vec_size):
     vec = torch.zeros(1, vec_size)
-    vec[0, index] = 1
+    if index >= 0:
+        vec[0, index] = 1
     return vec
 
 
@@ -17,20 +18,24 @@ class GetData:
         self.num_symbols = num_symbols
         self.stored_symbol = 0
 
-    def get_data(self):
+    def get_data(self, interactive=False):
         if self.stored_symbol == 0:  # Store or Ignore
             answer = 0
-            symbol = random.randint(1, self.num_symbols)
-            task = random.randint(0, 1)
+            if interactive:
+                symbol = int(input('Please select a number between 1 and n.\n'))
+                task = int(input('Please enter 0 for ignore and 1 for store.\n'))
+            else:
+                symbol = random.randint(1, self.num_symbols)
+                task = random.randint(0, 1)
             if task == 1:  # Store
                 self.stored_symbol = symbol
         else:  # Recall
             answer = self.stored_symbol
-            symbol = answer
+            symbol = 0
             self.stored_symbol = 0
             task = 2
 
-        symbol_vec = one_hot(symbol - 1, self.num_symbols)
+        symbol_vec = one_hot(symbol - 1, self.num_symbols)  # For Recall gives zero vector.
         task_vec = one_hot(task, 3)
         return torch.cat([symbol_vec, task_vec], 1), torch.tensor(answer)
 

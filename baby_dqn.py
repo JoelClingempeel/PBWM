@@ -22,6 +22,7 @@ parser.add_argument('--replace_target_every_n', type=int, default=30)
 parser.add_argument('--log_every_n', type=int, default=100)
 parser.add_argument('--num_train', type=int, default=3000)
 parser.add_argument('--num_demo', type=int, default=50)
+parser.add_argument('--interactive_mode', type=bool, default=True)
 
 args = vars(parser.parse_args())
 
@@ -72,7 +73,8 @@ class PFC:
 class DQNSolver:
     def __init__(self, data_src, q_net, target_q_net, pfc, optimizer, num_symbols,
                  gamma=.3, batch_size=8, iter_before_train=50, eps=.1,
-                 memory_buffer_size=100, replace_target_every_n=100, log_every_n=100):
+                 memory_buffer_size=100, replace_target_every_n=100, log_every_n=100,
+                 interactive_mode=False):
         self.data_src = data_src
         self.q_net = q_net
         self.target_q_net = target_q_net
@@ -86,6 +88,7 @@ class DQNSolver:
         self.memory_buffer_size = memory_buffer_size
         self.replace_target_every_n = replace_target_every_n
         self.log_every_n = log_every_n
+        self.interactive_mode = interactive_mode
         self.memory_buffer = []
         self.losses = []
 
@@ -159,7 +162,7 @@ class DQNSolver:
 
     def eval(self, num_iterations):
         for _ in range(num_iterations):
-            state, answer = self.data_src.get_data()
+            state, answer = self.data_src.get_data(interactive=self.interactive_mode)
             symbol = torch.argmax(state[:, :self.num_symbols], 1).item() + 1
             print(f"Symbol:  {symbol}")
             instruction = INSTRUCTION_LIST[torch.argmax(state[:, self.num_symbols:], 1).item()]
@@ -204,16 +207,9 @@ solver = DQNSolver(data_src,
                    iter_before_train=args['iter_before_training'],
                    eps=args['eps'],
                    memory_buffer_size=args['memory_buffer_size'],
-                   log_every_n=args['log_every_n'])
+                   log_every_n=args['log_every_n'],
+                   interactive_mode=args['interactive_mode'])
 
-solver.eps = .7
-solver.train(1000)
-solver.eps = .5
-solver.train(1000)
-solver.eps = .3
-solver.train(1000)
-solver.eps = .1
-solver.train(1000)
+solver.train(args['num_train'])
 solver.eps = 0
-solver.train(1000)
 solver.eval(args['num_demo'])
