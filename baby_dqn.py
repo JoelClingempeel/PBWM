@@ -92,7 +92,7 @@ class DQNSolver:
         self.memory_buffer = []
         self.losses = []
 
-    def get_q_value(self, state, action, use_target=True):
+    def get_q_value(self, state, action, use_target=False):
         q_net_input = torch.cat([state] + self.pfc.stripes + [action], 1)
         if use_target:
             return self.target_q_net(q_net_input)
@@ -120,10 +120,10 @@ class DQNSolver:
         optimizer.zero_grad()
 
         for state, action, reward, new_state in samples:
-            current_q = self.get_q_value(state, action.type(torch.FloatTensor), use_target=False)
+            current_q = self.get_q_value(state, action.type(torch.FloatTensor))
             future_q_value = torch.tensor(0)
             for next_action in ACTIONS:
-                candidate_q_value = self.get_q_value(state, next_action, use_target=False).detach()
+                candidate_q_value = self.get_q_value(state, next_action, use_target=True).detach()
                 future_q_value = max(future_q_value, candidate_q_value)
             loss += (current_q - (reward + self.gamma * future_q_value)) ** 2
 
