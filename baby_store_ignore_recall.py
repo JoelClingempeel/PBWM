@@ -2,7 +2,9 @@ import random
 
 import torch
 
-ACTIONS = {0: 'Ignore', 1: 'Store', 2: 'Recall'}
+ACTIONS = {0: 'Ignore',
+           1: 'Store',
+           2: 'Recall'}
 
 
 def one_hot(index, vec_size):
@@ -17,7 +19,7 @@ class GetData:
         self.num_symbols = num_symbols
         self.stored_symbol = 0
 
-    def get_data(self, interactive=False):
+    def get_data(self, ignore_prob=.5, interactive=False):
         if self.stored_symbol == 0:  # Store or Ignore
             answer = 0
             if interactive:
@@ -25,7 +27,11 @@ class GetData:
                 task = int(input('Please enter 0 for ignore and 1 for store.\n'))
             else:
                 symbol = random.randint(1, self.num_symbols)
-                task = random.randint(0, 1)
+                rand_num = random.random()
+                if rand_num < ignore_prob:
+                    task = 0
+                else:
+                    task = 1
             if task == 1:  # Store
                 self.stored_symbol = symbol
         else:  # Recall
