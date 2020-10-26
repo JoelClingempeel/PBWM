@@ -2,6 +2,10 @@ Experiments with models similar to the PBWM model.
 
 http://psych.colorado.edu/~oreilly/papers/OReillyFrank06_pbwm.pdf
 
+Note that learning is done via deep Q-networks as opposed to the PVLV algorithm used in the above paper.  For details on PVLV, see here:
+
+http://ski.clps.brown.edu/papers/OReillyFrankHazyEtAl07.pdf
+
 ## dqn 
 Main model for store-ignore-recall task.  
 
