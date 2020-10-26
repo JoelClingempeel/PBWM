@@ -22,7 +22,7 @@ class GetData:
         if self.stored_symbol == 0:  # Store or Ignore
             answer = 0
             if interactive:
-                symbol = int(input('Please select a number between 1 and n.\n'))
+                symbol = int(input(f'Please select a number between 1 and {self.num_symbols}.\n'))
                 task = int(input('Please enter 0 for ignore and 1 for store.\n'))
             else:
                 symbol = random.randint(1, self.num_symbols)

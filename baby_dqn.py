@@ -18,12 +18,12 @@ parser.add_argument('--batch_size', type=int, default=16)
 parser.add_argument('--iter_before_training', type=int, default=200)
 parser.add_argument('--eps', type=float, default=.3)
 parser.add_argument('--memory_buffer_size', type=int, default=500)
-parser.add_argument('--replace_target_every_n', type=int, default=200)
+parser.add_argument('--replace_target_every_n', type=int, default=30)
 parser.add_argument('--log_every_n', type=int, default=100)
 parser.add_argument('--num_train', type=int, default=4000)
 parser.add_argument('--num_demo', type=int, default=50)
-parser.add_argument('--ignore_prob', type=float, default=0)
-parser.add_argument('--interactive_mode', type=str, default='False')
+parser.add_argument('--ignore_prob', type=float, default=0.01)
+parser.add_argument('--interactive_mode', type=str, default='True')
 
 args = vars(parser.parse_args())
 
@@ -139,7 +139,7 @@ class DQNSolver:
             # Main iteration.
             state, answer = self.data_src.get_data(ignore_prob=self.ignore_prob)
             action = self.select_action(state)
-            self.pfc.update(state[:, :-3], action)
+            self.pfc.update(state[:, :self.num_symbols], action)
             if self.pfc.output() == answer:
                 reward = 1
             else:
@@ -173,9 +173,10 @@ class DQNSolver:
 
             gating = self.select_action(state)
             print('GATING: ', gating)
-            self.pfc.update(state[:, :-3], gating)
+            self.pfc.update(state[:, :self.num_symbols], gating)
             print('GET: ', self.pfc.output().item())
             print('EXPECT: ', answer.item())
+            print('PFC: ', self.pfc.stripes)
             print('\n\n')
 
 
