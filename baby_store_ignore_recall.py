@@ -9,8 +9,7 @@ ACTIONS = {0: 'Ignore',
 
 def one_hot(index, vec_size):
     vec = torch.zeros(1, vec_size)
-    if index >= 0:
-        vec[0, index] = 1
+    vec[0, index] = 1
     return vec
 
 
@@ -36,11 +35,11 @@ class GetData:
                 self.stored_symbol = symbol
         else:  # Recall
             answer = self.stored_symbol
-            symbol = 0
+            symbol = random.randint(1, self.num_symbols)
             self.stored_symbol = 0
             task = 2
 
-        symbol_vec = one_hot(symbol - 1, self.num_symbols)  # For Recall gives zero vector.
+        symbol_vec = one_hot(symbol - 1, self.num_symbols)
         task_vec = one_hot(task, 3)
         return torch.cat([symbol_vec, task_vec], 1), torch.tensor(answer)
 
