@@ -11,19 +11,19 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('--num_symbols', type=int, default=2)
 parser.add_argument('--dqn_hidden_dim', type=int, default=3)
-parser.add_argument('--lr', type=float, default=.0001)
+parser.add_argument('--lr', type=float, default=.001)
 parser.add_argument('--momentum', type=float, default=.7)
 parser.add_argument('--gamma', type=float, default=.8)
 parser.add_argument('--batch_size', type=int, default=16)
 parser.add_argument('--iter_before_training', type=int, default=200)
 parser.add_argument('--eps', type=float, default=.3)
 parser.add_argument('--memory_buffer_size', type=int, default=500)
-parser.add_argument('--replace_target_every_n', type=int, default=30)
+parser.add_argument('--replace_target_every_n', type=int, default=500)
 parser.add_argument('--log_every_n', type=int, default=100)
 parser.add_argument('--num_train', type=int, default=4000)
 parser.add_argument('--num_demo', type=int, default=50)
-parser.add_argument('--ignore_prob', type=float, default=0.01)
-parser.add_argument('--interactive_mode', type=str, default='True')
+parser.add_argument('--ignore_prob', type=float, default=0.33)
+parser.add_argument('--interactive_mode', type=str, default='False')
 
 args = vars(parser.parse_args())
 
@@ -67,7 +67,7 @@ class PFC:
     def output(self):
         for val in self.stripes[1].squeeze(0):
             if val.item():
-                return torch.argmax(self.stripes[-1])
+                return torch.argmax(self.stripes[-1]) + 1
         return torch.tensor(0)
 
 
@@ -215,6 +215,16 @@ solver = DQNSolver(data_src,
                    ignore_prob=args['ignore_prob'],
                    interactive_mode=(args['interactive_mode'] == 'True'))
 
-solver.train(args['num_train'])
+solver.eps = .9
+solver.train(3000)
+solver.eps = .7
+solver.train(3000)
+solver.eps = .5
+solver.train(3000)
+solver.eps = .3
+solver.train(3000)
+solver.eps = .1
+solver.train(3000)
 solver.eps = 0
+solver.train(3000)
 solver.eval(args['num_demo'])
