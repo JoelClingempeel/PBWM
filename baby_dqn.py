@@ -4,16 +4,17 @@ import random
 import torch
 import torch.nn as nn
 from torch import optim
+from torch.utils.tensorboard import SummaryWriter
 
 from baby_store_ignore_recall import GetData
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--num_symbols', type=int, default=2)
-parser.add_argument('--dqn_hidden_dim', type=int, default=3)
+parser.add_argument('--dqn_hidden_dim', type=int, default=8)
 parser.add_argument('--lr', type=float, default=.001)
 parser.add_argument('--momentum', type=float, default=.7)
-parser.add_argument('--gamma', type=float, default=.8)
+parser.add_argument('--gamma', type=float, default=.95)
 parser.add_argument('--batch_size', type=int, default=16)
 parser.add_argument('--iter_before_training', type=int, default=200)
 parser.add_argument('--eps', type=float, default=.3)
@@ -24,6 +25,7 @@ parser.add_argument('--num_train', type=int, default=4000)
 parser.add_argument('--num_demo', type=int, default=50)
 parser.add_argument('--ignore_prob', type=float, default=0.33)
 parser.add_argument('--interactive_mode', type=str, default='False')
+parser.add_argument('--tensorboard_path', type=str, default='logs')
 
 args = vars(parser.parse_args())
 
@@ -75,7 +77,7 @@ class DQNSolver:
     def __init__(self, data_src, q_net, target_q_net, pfc, optimizer, num_symbols,
                  gamma=.3, batch_size=8, iter_before_train=50, eps=.1,
                  memory_buffer_size=100, replace_target_every_n=100, log_every_n=100,
-                 ignore_prob=.5, interactive_mode=False):
+                 ignore_prob=.5, interactive_mode=False, tensorboard_path='logs'):
         self.data_src = data_src
         self.q_net = q_net
         self.target_q_net = target_q_net
@@ -93,6 +95,9 @@ class DQNSolver:
         self.interactive_mode = interactive_mode
         self.memory_buffer = []
         self.losses = []
+        self.rewards = []
+        self.writer = SummaryWriter(tensorboard_path)
+        self.log_count = 0
 
     def get_q_value(self, state, action, use_target=False):
         q_net_input = torch.cat([state] + self.pfc.stripes + [action], 1)
@@ -144,6 +149,7 @@ class DQNSolver:
                 reward = 1
             else:
                 reward = 0
+            self.rewards.append(reward)
 
             # Update memory buffer and (if applicable) train.
             if triple:
@@ -156,8 +162,12 @@ class DQNSolver:
             triple = [state, action, reward]  # For next iteration
 
             if len(self.losses) == self.log_every_n:
-                print(sum(self.losses) / len(self.losses))
+                self.writer.add_scalar('Loss', sum(self.losses) / len(self.losses), self.log_count)
                 self.losses = []
+                self.writer.add_scalar('Reward', sum(self.rewards) / len(self.rewards), self.log_count)
+                self.rewards = []
+                self.writer.flush()
+                self.log_count += 1
 
             if (iteration + 1) % self.replace_target_every_n == 0:
                 self.target_q_net.load_state_dict(self.q_net.state_dict())
@@ -188,13 +198,11 @@ dqn = nn.Sequential(
     nn.Linear(num_symbols * 3 + 5, dqn_hidden_dim),
     nn.ReLU(),
     nn.Linear(dqn_hidden_dim, 1),
-    nn.ReLU()
 )
 target_dqn = nn.Sequential(
     nn.Linear(num_symbols * 3 + 5, dqn_hidden_dim),
     nn.ReLU(),
     nn.Linear(dqn_hidden_dim, 1),
-    nn.ReLU()
 )
 target_dqn.load_state_dict(dqn.state_dict())
 pfc = PFC(num_symbols)
@@ -213,7 +221,8 @@ solver = DQNSolver(data_src,
                    memory_buffer_size=args['memory_buffer_size'],
                    log_every_n=args['log_every_n'],
                    ignore_prob=args['ignore_prob'],
-                   interactive_mode=(args['interactive_mode'] == 'True'))
+                   interactive_mode=(args['interactive_mode'] == 'True'),
+                   tensorboard_path=args['tensorboard_path'])
 
 solver.eps = .9
 solver.train(3000)
