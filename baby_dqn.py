@@ -1,4 +1,6 @@
 import argparse
+import datetime
+import os
 import random
 
 import torch
@@ -25,11 +27,13 @@ parser.add_argument('--num_train', type=int, default=4000)
 parser.add_argument('--num_demo', type=int, default=50)
 parser.add_argument('--ignore_prob', type=float, default=0.33)
 parser.add_argument('--interactive_mode', type=str, default='False')
-parser.add_argument('--tensorboard_path', type=str, default='logs')
+parser.add_argument('--tensorboard_path', type=str, default='logs/tensorboard')
+parser.add_argument('--examples_path', type=str, default='logs/examples')
 
 args = vars(parser.parse_args())
 
 INSTRUCTION_LIST = {0: 'Ignore', 1: 'Store', 2: 'Recall'}
+TIMESTAMP = str(datetime.datetime.now()).replace(' ', '_')
 
 
 def copy_nets(net1, net2):
@@ -77,7 +81,7 @@ class DQNSolver:
     def __init__(self, data_src, q_net, target_q_net, pfc, optimizer, num_symbols,
                  gamma=.3, batch_size=8, iter_before_train=50, eps=.1,
                  memory_buffer_size=100, replace_target_every_n=100, log_every_n=100,
-                 ignore_prob=.5, interactive_mode=False, tensorboard_path='logs'):
+                 ignore_prob=.5, interactive_mode=False, tensorboard_path='logs', examples_path=''):
         self.data_src = data_src
         self.q_net = q_net
         self.target_q_net = target_q_net
@@ -93,10 +97,11 @@ class DQNSolver:
         self.log_every_n = log_every_n
         self.ignore_prob = ignore_prob
         self.interactive_mode = interactive_mode
+        self.writer = SummaryWriter(os.path.join(tensorboard_path, TIMESTAMP))
+        self.examples_path = os.path.join(examples_path, TIMESTAMP)
         self.memory_buffer = []
         self.losses = []
         self.rewards = []
-        self.writer = SummaryWriter(tensorboard_path)
         self.log_count = 0
 
     def get_q_value(self, state, action, use_target=False):
@@ -173,21 +178,21 @@ class DQNSolver:
                 self.target_q_net.load_state_dict(self.q_net.state_dict())
 
     def eval(self, num_iterations):
-        for _ in range(num_iterations):
-            state, answer = self.data_src.get_data(ignore_prob=self.ignore_prob,
-                                                   interactive=self.interactive_mode)
-            symbol = torch.argmax(state[:, :self.num_symbols], 1).item() + 1
-            print(f"Symbol:  {symbol}")
-            instruction = INSTRUCTION_LIST[torch.argmax(state[:, self.num_symbols:], 1).item()]
-            print(f"Action:  {instruction}")
+        with open(self.examples_path, 'w') as f:
+            for _ in range(num_iterations):
+                state, answer = self.data_src.get_data(ignore_prob=self.ignore_prob,
+                                                       interactive=self.interactive_mode)
+                symbol = torch.argmax(state[:, :self.num_symbols], 1).item() + 1
+                f.write(f'Symbol:  {symbol}\n')
+                instruction = INSTRUCTION_LIST[torch.argmax(state[:, self.num_symbols:], 1).item()]
+                f.write(f'Action:  {instruction}\n')
 
-            gating = self.select_action(state)
-            print('GATING: ', gating)
-            self.pfc.update(state[:, :self.num_symbols], gating)
-            print('GET: ', self.pfc.output().item())
-            print('EXPECT: ', answer.item())
-            print('PFC: ', self.pfc.stripes)
-            print('\n\n')
+                gating = self.select_action(state)
+                f.write(f'GATING: {gating}\n')
+                self.pfc.update(state[:, :self.num_symbols], gating)
+                f.write(f'GET: {self.pfc.output().item()}\n')
+                f.write(f'EXPECT: {answer.item()}\n')
+                f.write(f'PFC: {self.pfc.stripes}\n\n')
 
 
 num_symbols = args['num_symbols']
@@ -222,7 +227,8 @@ solver = DQNSolver(data_src,
                    log_every_n=args['log_every_n'],
                    ignore_prob=args['ignore_prob'],
                    interactive_mode=(args['interactive_mode'] == 'True'),
-                   tensorboard_path=args['tensorboard_path'])
+                   tensorboard_path=args['tensorboard_path'],
+                   examples_path=args['examples_path'])
 
 solver.eps = .9
 solver.train(3000)
