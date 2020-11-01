@@ -24,7 +24,7 @@ parser.add_argument('--memory_buffer_size', type=int, default=500)
 parser.add_argument('--replace_target_every_n', type=int, default=500)
 parser.add_argument('--log_every_n', type=int, default=100)
 parser.add_argument('--num_train', type=int, default=4000)
-parser.add_argument('--num_demo', type=int, default=3000)
+parser.add_argument('--num_demo', type=int, default=100)
 parser.add_argument('--ignore_prob', type=float, default=0.33)
 parser.add_argument('--interactive_mode', type=str, default='False')
 parser.add_argument('--tensorboard_path', type=str, default='logs/tensorboard')
@@ -51,6 +51,7 @@ def get_actions(length):
     return out
 
 
+# TODO Simplify representation of actions.
 ACTIONS = [torch.tensor([action]).float()
            for action in get_actions(2)]
 
@@ -105,27 +106,20 @@ class DQNSolver:
         self.loss_log_count = 0
         self.reward_log_count = 0
 
-    def get_q_value(self, state, action, use_target=False):
-        q_net_input = torch.cat([state] + self.pfc.stripes + [action], 1)
+    def get_q_values(self, state, use_target=False):
+        q_net_input = torch.cat([state] + self.pfc.stripes, 1)
         if use_target:
             return self.target_q_net(q_net_input)
         else:
             return self.q_net(q_net_input)
 
-    @torch.no_grad()
     def select_action(self, state):
         if (len(self.memory_buffer) < self.iter_before_train or
                 random.uniform(0, 1) < self.eps):
-            return torch.tensor([[random.choice([0, 1])
-                                  for _ in range(2)]])
+            return random.randint(0, 3)
         else:
-            best_action_score = -1
-            for action in ACTIONS:
-                action_score = self.get_q_value(state, action)
-                if action_score > best_action_score:
-                    best = action
-                    best_action_score = action_score
-            return best
+            q_val = self.get_q_values(state)
+            return torch.argmax(q_val.squeeze(0)).item()
 
     def train_iterate(self):
         samples = random.sample(self.memory_buffer, self.batch_size)
@@ -133,11 +127,8 @@ class DQNSolver:
         optimizer.zero_grad()
 
         for state, action, reward, new_state in samples:
-            current_q = self.get_q_value(state, action.type(torch.FloatTensor))
-            future_q_value = torch.tensor(0)
-            for next_action in ACTIONS:
-                candidate_q_value = self.get_q_value(state, next_action, use_target=True).detach()
-                future_q_value = max(future_q_value, candidate_q_value)
+            current_q = self.get_q_values(state).squeeze(0)[action]
+            future_q_value = torch.max(self.get_q_values(state, use_target=True).detach().squeeze(0))
             loss += (current_q - (reward + self.gamma * future_q_value)) ** 2
 
         loss.backward(retain_graph=True)
@@ -149,8 +140,9 @@ class DQNSolver:
         for iteration in range(num_iterations):
             # Main iteration.
             state, answer = self.data_src.get_data(ignore_prob=self.ignore_prob)
-            action = self.select_action(state)
-            self.pfc.update(state[:, :self.num_symbols], action)
+            with torch.no_grad():
+                action = self.select_action(state)
+            self.pfc.update(state[:, :self.num_symbols], ACTIONS[action])
             if self.pfc.output() == answer:
                 reward = 1
             else:
@@ -183,25 +175,26 @@ class DQNSolver:
                 self.target_q_net.load_state_dict(self.q_net.state_dict())
 
     def eval(self, num_iterations):
-        with open(self.examples_path, 'w') as f:
-            for _ in range(num_iterations):
-                state, answer = self.data_src.get_data(ignore_prob=self.ignore_prob,
-                                                       interactive=self.interactive_mode)
-                symbol = torch.argmax(state[:, :self.num_symbols], 1).item() + 1
-                f.write(f'Symbol:  {symbol}\n')
-                instruction = INSTRUCTION_LIST[torch.argmax(state[:, self.num_symbols:], 1).item()]
-                f.write(f'Action:  {instruction}\n')
+        with torch.no_grad():
+            with open(self.examples_path, 'w') as f:
+                for _ in range(num_iterations):
+                    state, answer = self.data_src.get_data(ignore_prob=self.ignore_prob,
+                                                           interactive=self.interactive_mode)
+                    symbol = torch.argmax(state[:, :self.num_symbols], 1).item() + 1
+                    f.write(f'Symbol:  {symbol}\n')
+                    instruction = INSTRUCTION_LIST[torch.argmax(state[:, self.num_symbols:], 1).item()]
+                    f.write(f'Action:  {instruction}\n')
 
-                action = self.select_action(state)
-                f.write(f'ACTION: {action}\n')
-                self.pfc.update(state[:, :self.num_symbols], action)
-                f.write(f'GET: {self.pfc.output().item()}\n')
-                f.write(f'EXPECT: {answer.item()}\n')
-                if self.pfc.output() == answer:
-                    f.write('REWARD: 1\n')
-                else:
-                    f.write('REWARD: 0\n')
-                f.write(f'PFC: {self.pfc.stripes}\n\n')
+                    action = ACTIONS[self.select_action(state)]
+                    f.write(f'ACTION: {action}\n')
+                    self.pfc.update(state[:, :self.num_symbols], action)
+                    f.write(f'GET: {self.pfc.output().item()}\n')
+                    f.write(f'EXPECT: {answer.item()}\n')
+                    if self.pfc.output() == answer:
+                        f.write('REWARD: 1\n')
+                    else:
+                        f.write('REWARD: 0\n')
+                    f.write(f'PFC: {self.pfc.stripes}\n\n')
 
 
 num_symbols = args['num_symbols']
@@ -209,14 +202,14 @@ dqn_hidden_dim = args['dqn_hidden_dim']
 
 data_src = GetData(num_symbols)
 dqn = nn.Sequential(
-    nn.Linear(num_symbols * 3 + 5, dqn_hidden_dim),
+    nn.Linear(num_symbols * 3 + 3, dqn_hidden_dim),
     nn.ReLU(),
-    nn.Linear(dqn_hidden_dim, 1),
+    nn.Linear(dqn_hidden_dim, 4),
 )
 target_dqn = nn.Sequential(
-    nn.Linear(num_symbols * 3 + 5, dqn_hidden_dim),
+    nn.Linear(num_symbols * 3 + 3, dqn_hidden_dim),
     nn.ReLU(),
-    nn.Linear(dqn_hidden_dim, 1),
+    nn.Linear(dqn_hidden_dim, 4),
 )
 target_dqn.load_state_dict(dqn.state_dict())
 pfc = PFC(num_symbols)
