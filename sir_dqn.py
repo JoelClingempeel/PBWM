@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch import optim
 from torch.utils.tensorboard import SummaryWriter
 
-from baby_store_ignore_recall import GetData
+from store_ignore_recall import GetData
 
 parser = argparse.ArgumentParser()
 
@@ -26,6 +26,7 @@ parser.add_argument('--log_every_n', type=int, default=100)
 parser.add_argument('--num_train', type=int, default=4000)
 parser.add_argument('--num_demo', type=int, default=100)
 parser.add_argument('--ignore_prob', type=float, default=0.33)
+parser.add_argument('--use_simplified_task', type=str, default='False')
 parser.add_argument('--interactive_mode', type=str, default='False')
 parser.add_argument('--tensorboard_path', type=str, default='logs/tensorboard')
 parser.add_argument('--examples_path', type=str, default='logs/examples')
@@ -184,7 +185,8 @@ class DQNSolver:
 num_symbols = args['num_symbols']
 dqn_hidden_dim = args['dqn_hidden_dim']
 
-data_src = GetData(num_symbols)
+data_src = GetData(num_symbols,
+                   use_simplified_task=(args['use_simplified_task'] == 'True'))
 dqn = nn.Sequential(
     nn.Linear(num_symbols * 3 + 3, dqn_hidden_dim),
     nn.ReLU(),

@@ -13,10 +13,8 @@ Main model for store-ignore-recall task.
 * The point is to store the symbol when told to store and then recall the symbol when told to recall.
 *  A reward is obtained by
     -  1) recalling the correct symbol when told to recall or
-    -  2) outputing nothing when told to store or ignore.
-
-## baby_dqn
-Similar to dqn but where RECALL is given if and only if the previous command is STORE.
+    -  2) outputting nothing when told to store or ignore.
+* The **use_simplified_task** flag causes RECALL to be given if and only if the previous command was STORE.
 
 ## most_trivial_example
 Two states (0, 1) and two actions (0, 1) with a reward when the state matches the action.
