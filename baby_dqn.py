@@ -40,22 +40,6 @@ def copy_nets(net1, net2):
     net1.load_state_dict(net2.state_dict())
 
 
-def get_actions(length):
-    out = []
-    for index in range(2 ** length):
-        vec = []
-        for _ in range(length):
-            vec.append(index % 2)
-            index >>= 1
-        out.append(vec)
-    return out
-
-
-# TODO Simplify representation of actions.
-ACTIONS = [torch.tensor([action]).float()
-           for action in get_actions(2)]
-
-
 class PFC:
     def __init__(self, stripe_size):
         self.stripe_size = stripe_size
@@ -63,10 +47,10 @@ class PFC:
         self.stripes = [torch.zeros(1, stripe_size)
                         for _ in range(2)]
 
-    def update(self, data, gates):
-        if gates[0, 0].item():
+    def update(self, data, action):
+        if action in (1, 3):
             self.stripes[0] = data
-        if gates[0, 1].item():
+        if action in (0, 2):
             self.stripes[1] = self.stripes[0].detach()
         else:
             self.stripes[1] = torch.zeros(1, self.stripe_size)
@@ -142,7 +126,7 @@ class DQNSolver:
             state, answer = self.data_src.get_data(ignore_prob=self.ignore_prob)
             with torch.no_grad():
                 action = self.select_action(state)
-            self.pfc.update(state[:, :self.num_symbols], ACTIONS[action])
+            self.pfc.update(state[:, :self.num_symbols], action)
             if self.pfc.output() == answer:
                 reward = 1
             else:
@@ -185,7 +169,7 @@ class DQNSolver:
                     instruction = INSTRUCTION_LIST[torch.argmax(state[:, self.num_symbols:], 1).item()]
                     f.write(f'Action:  {instruction}\n')
 
-                    action = ACTIONS[self.select_action(state)]
+                    action = self.select_action(state)
                     f.write(f'ACTION: {action}\n')
                     self.pfc.update(state[:, :self.num_symbols], action)
                     f.write(f'GET: {self.pfc.output().item()}\n')
