@@ -18,13 +18,13 @@ parser.add_argument('--lr', type=float, default=.001)
 parser.add_argument('--momentum', type=float, default=.7)
 parser.add_argument('--gamma', type=float, default=.95)
 parser.add_argument('--batch_size', type=int, default=16)
-parser.add_argument('--iter_before_training', type=int, default=200)
+parser.add_argument('--iter_before_train', type=int, default=200)
 parser.add_argument('--eps', type=float, default=.3)
 parser.add_argument('--memory_buffer_size', type=int, default=500)
 parser.add_argument('--replace_target_every_n', type=int, default=500)
 parser.add_argument('--log_every_n', type=int, default=100)
 parser.add_argument('--num_train', type=int, default=4000)
-parser.add_argument('--num_demo', type=int, default=50)
+parser.add_argument('--num_demo', type=int, default=3000)
 parser.add_argument('--ignore_prob', type=float, default=0.33)
 parser.add_argument('--interactive_mode', type=str, default='False')
 parser.add_argument('--tensorboard_path', type=str, default='logs/tensorboard')
@@ -102,7 +102,8 @@ class DQNSolver:
         self.memory_buffer = []
         self.losses = []
         self.rewards = []
-        self.log_count = 0
+        self.loss_log_count = 0
+        self.reward_log_count = 0
 
     def get_q_value(self, state, action, use_target=False):
         q_net_input = torch.cat([state] + self.pfc.stripes + [action], 1)
@@ -167,12 +168,16 @@ class DQNSolver:
             triple = [state, action, reward]  # For next iteration
 
             if len(self.losses) == self.log_every_n:
-                self.writer.add_scalar('Loss', sum(self.losses) / len(self.losses), self.log_count)
+                self.writer.add_scalar('Loss', sum(self.losses) / len(self.losses), self.loss_log_count)
                 self.losses = []
-                self.writer.add_scalar('Reward', sum(self.rewards) / len(self.rewards), self.log_count)
+                self.writer.flush()
+                self.loss_log_count += 1
+
+            if len(self.rewards) == self.log_every_n:
+                self.writer.add_scalar('Reward', sum(self.rewards) / len(self.rewards), self.reward_log_count)
                 self.rewards = []
                 self.writer.flush()
-                self.log_count += 1
+                self.reward_log_count += 1
 
             if (iteration + 1) % self.replace_target_every_n == 0:
                 self.target_q_net.load_state_dict(self.q_net.state_dict())
@@ -187,11 +192,15 @@ class DQNSolver:
                 instruction = INSTRUCTION_LIST[torch.argmax(state[:, self.num_symbols:], 1).item()]
                 f.write(f'Action:  {instruction}\n')
 
-                gating = self.select_action(state)
-                f.write(f'GATING: {gating}\n')
-                self.pfc.update(state[:, :self.num_symbols], gating)
+                action = self.select_action(state)
+                f.write(f'ACTION: {action}\n')
+                self.pfc.update(state[:, :self.num_symbols], action)
                 f.write(f'GET: {self.pfc.output().item()}\n')
                 f.write(f'EXPECT: {answer.item()}\n')
+                if self.pfc.output() == answer:
+                    f.write('REWARD: 1\n')
+                else:
+                    f.write('REWARD: 0\n')
                 f.write(f'PFC: {self.pfc.stripes}\n\n')
 
 
@@ -221,7 +230,7 @@ solver = DQNSolver(data_src,
                    num_symbols,
                    gamma=args['gamma'],
                    batch_size=args['batch_size'],
-                   iter_before_train=args['iter_before_training'],
+                   iter_before_train=args['iter_before_train'],
                    eps=args['eps'],
                    memory_buffer_size=args['memory_buffer_size'],
                    log_every_n=args['log_every_n'],
@@ -241,5 +250,5 @@ solver.train(3000)
 solver.eps = .1
 solver.train(3000)
 solver.eps = 0
-solver.train(3000)
+solver.train(8000)
 solver.eval(args['num_demo'])
